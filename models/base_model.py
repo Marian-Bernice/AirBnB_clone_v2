@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 """Defines the BaseModel class."""
 import models
-from ime
+from uuid import uuid4
+from datetime import datetime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column
 from sqlalchemy import DateTime
@@ -11,15 +12,7 @@ Base = declarative_base()
 
 
 class BaseModel:
-<<<<<<< HEAD
-    """ Base model class """
-    if models.is_db == "db":
-        id = Column(String(60), primary_key=True, nullable=False)
-        created_at = Column(DateTime, nullable=False, default=datetime.utcnow())
-        updated_at = Column(DateTime, nullable=False, default=datetime.utcnow())
-=======
     """Defines the BaseModel class.
->>>>>>> 9583e6989dfac698547dd13daba8e132316bccc2
 
     Attributes:
         id (sqlalchemy String): The BaseModel id.
