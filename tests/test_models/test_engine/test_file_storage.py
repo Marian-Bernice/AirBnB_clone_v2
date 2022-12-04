@@ -1,121 +1,180 @@
 #!/usr/bin/python3
-""" Module for testing file storage"""
-import unittest
-import models
-import inspect
-import time
-import json
-from unittest import mock
+"""Defines unnittests for models/engine/file_storage.py."""
 import os
-from models.engine import file_storage
+import json
+import pep8
+import unittest
+from datetime import datetime
+from models.base_model import BaseModel
+from models.user import User
+from models.state import State
 from models.city import City
 from models.amenity import Amenity
-from models.user import User
-from models.review import Review
-from models.state import State
 from models.place import Place
-from models.base_model import BaseModel
-from models import storage
-import pep8 as pycodestyle
-
-Model = file_storage.FileStorage
-FileStorage = file_storage.FileStorage
-path1 = "models/engine/file_storage.py"
-path2 = "tests/test_models/test_engine/test_file_storage.py"
-module_doc = file_storage.FileStorage.__doc__
-
-classes = {"Amenity": Amenity, "BaseModel": BaseModel, "Review": Review,
-           "City": City, "User": User, "State": State, "Place": Place}
+from models.review import Review
+from models.engine.file_storage import FileStorage
 
 
-class TestBaseModelDocs(unittest.TestCase):
-    """Test to check behaviors"""
+class TestFileStorage(unittest.TestCase):
+    """Unittests for testing the FileStorage class."""
 
     @classmethod
-    def setUpClass(self):
-        """setting up tests"""
-        self.base_funcs = inspect.getmembers(BaseModel, inspect.isfunction)
+    def setUpClass(cls):
+        """FileStorage testing setup.
 
-    def test_pep8(self):
-        """Testing pep8"""
-        for path in [path1,
-                     path2]:
-            with self.subTest(path=path):
-                errors = pycodestyle.Checker(path).check_all()
-                self.assertEqual(errors, 0)
-
-    def test_module_docstring(self):
-        """Test module docstring"""
-        self.assertIsNot(module_doc, None,
-                         "base_model.py needs a docstring")
-        self.assertTrue(len(module_doc) > 1,
-                        "base_model.py needs a docstring")
-
-    def test_class_docstring(self):
-        """Test classes doctring"""
-        self.assertIsNot(BaseModel.__doc__, None,
-                         "BaseModel class needs a docstring")
-        self.assertTrue(len(BaseModel.__doc__) >= 1,
-                        "BaseModel class needs a docstring")
-
-    def test_func_docstrings(self):
-        """test func dostrings"""
-        for func in self.base_funcs:
-            with self.subTest(function=func):
-                self.assertIsNot(
-                    func[1].__doc__,
-                    None,
-                    "{:s} method needs a docstring".format(func[0])
-                )
-                self.assertTrue(
-                    len(func[1].__doc__) > 1,
-                    "{:s} method needs a docstring".format(func[0])
-                )
-
-
-@unittest.skipIf(models.is_db == 'db', 'Not testing Dbstorage')
-class Test_FileStorage(unittest.TestCase):
-    """Testing proper behavrious"""
-    def dic_tests(self):
-        """Testing that FileStorage_objects returns properly"""
-        f_storage = FileStorage()
-        dic = f_storage.all()
-        self.assertEqual(type(dic, dict))
-        self.assertIs(dic, f_storage.__Filestorage.__objects)
-
-    @unittest.skipIf(models.is_db == 'db', 'Not testing Dbstorage')
-    def test_new_method(self):
-        """testing that  new method saves on __objects attr"""
-        storage = FileStorage()
-        save = FileStorage._FileStorage__objects
+        Temporarily renames any existing file.json.
+        Resets FileStorage objects dictionary.
+        Creates instances of all class types for testing.
+        """
+        try:
+            os.rename("file.json", "tmp")
+        except IOError:
+            pass
         FileStorage._FileStorage__objects = {}
-        test_dict = {}
-        for key, value in classes.items():
-            with self.subTest(key=key, value=value):
-                instance = value()
-                instance_key = instance.__class__.__name__ + "." + instance.id
-                storage.new(instance)
-                test_dict[instance_key] = instance
-                self.assertEqual(test_dict, storage._FileStorage__objects)
-        FileStorage._FileStorage__objects = save
+        cls.storage = FileStorage()
+        cls.base = BaseModel()
+        key = "{}.{}".format(type(cls.base).__name__, cls.base.id)
+        FileStorage._FileStorage__objects[key] = cls.base
+        cls.user = User()
+        key = "{}.{}".format(type(cls.user).__name__, cls.user.id)
+        FileStorage._FileStorage__objects[key] = cls.user
+        cls.state = State()
+        key = "{}.{}".format(type(cls.state).__name__, cls.state.id)
+        FileStorage._FileStorage__objects[key] = cls.state
+        cls.place = Place()
+        key = "{}.{}".format(type(cls.place).__name__, cls.place.id)
+        FileStorage._FileStorage__objects[key] = cls.place
+        cls.city = City()
+        key = "{}.{}".format(type(cls.city).__name__, cls.city.id)
+        FileStorage._FileStorage__objects[key] = cls.city
+        cls.amenity = Amenity()
+        key = "{}.{}".format(type(cls.amenity).__name__, cls.amenity.id)
+        FileStorage._FileStorage__objects[key] = cls.amenity
+        cls.review = Review()
+        key = "{}.{}".format(type(cls.review).__name__, cls.review.id)
+        FileStorage._FileStorage__objects[key] = cls.review
 
-    @unittest.skipIf(models.is_db == 'db', 'Not testing Dbstorage')
+    @classmethod
+    def tearDownClass(cls):
+        """FileStorage testing teardown.
+
+        Restore original file.json.
+        Delete all test class instances.
+        """
+        try:
+            os.remove("file.json")
+        except IOError:
+            pass
+        try:
+            os.rename("tmp", "file.json")
+        except IOError:
+            pass
+        del cls.storage
+        del cls.base
+        del cls.user
+        del cls.state
+        del cls.place
+        del cls.city
+        del cls.amenity
+        del cls.review
+
+    def test_pep8_FileStorage(self):
+        """Test pep8 styling."""
+        style = pep8.StyleGuide(quiet=True)
+        p = style.check_files(['models/engine/file_storage.py'])
+        self.assertEqual(p.total_errors, 0, "fix pep8")
+
+    def test_docstrings(self):
+        """Check for docstrings."""
+        self.assertIsNotNone(FileStorage.__doc__)
+        self.assertIsNotNone(FileStorage.all.__doc__)
+        self.assertIsNotNone(FileStorage.new.__doc__)
+        self.assertIsNotNone(FileStorage.reload.__doc__)
+        self.assertIsNotNone(FileStorage.delete.__doc__)
+
+    def test_attributes(self):
+        """Check for attributes."""
+        self.assertEqual(str, type(FileStorage._FileStorage__file_path))
+        self.assertEqual(dict, type(FileStorage._FileStorage__objects))
+
+    def test_methods(self):
+        """Check for methods."""
+        self.assertTrue(hasattr(FileStorage, "all"))
+        self.assertTrue(hasattr(FileStorage, "new"))
+        self.assertTrue(hasattr(FileStorage, "reload"))
+        self.assertTrue(hasattr(FileStorage, "delete"))
+
+    def test_init(self):
+        """Test initialization."""
+        self.assertTrue(isinstance(self.storage, FileStorage))
+
+    def test_all(self):
+        """Test default all method."""
+        obj = self.storage.all()
+        self.assertEqual(type(obj), dict)
+        self.assertIs(obj, FileStorage._FileStorage__objects)
+        self.assertEqual(len(obj), 7)
+
+    def test_all_cls(self):
+        """Test all method with specified cls."""
+        obj = self.storage.all(BaseModel)
+        self.assertEqual(type(obj), dict)
+        self.assertEqual(len(obj), 1)
+        self.assertEqual(self.base, list(obj.values())[0])
+
+    def test_new(self):
+        """Test new method."""
+        bm = BaseModel()
+        self.storage.new(bm)
+        store = FileStorage._FileStorage__objects
+        self.assertIn("BaseModel." + bm.id, store.keys())
+        self.assertIn(self.base, store.values())
+
     def test_save(self):
-        """Testing proper behaviour saving in file.json"""
-        os.remove("file.json")
-        storage = FileStorage()
-        new_dict = {}
-        for key, value in classes.items():
-            instance = value()
-            instance_key = instance.__class__.__name__ + "." + instance.id
-            new_dict[instance_key] = instance
-        save = FileStorage._FileStorage__objects
-        FileStorage._FileStorage__objects = new_dict
-        storage.save()
-        FileStorage._FileStorage__objects = save
-        for key, value in new_dict.items():
-            new_dict[key] = value.to_dict()
-        string = json.dumps(new_dict)
-        with open("file.json", "r") as f:
-            js = f.read()
-        self.assertEqual(json.loads(string), json.loads(js))
+        """Test save method."""
+        self.storage.save()
+        with open("file.json", "r", encoding="utf-8") as f:
+            save_text = f.read()
+            self.assertIn("BaseModel." + self.base.id, save_text)
+            self.assertIn("User." + self.user.id, save_text)
+            self.assertIn("State." + self.state.id, save_text)
+            self.assertIn("Place." + self.place.id, save_text)
+            self.assertIn("City." + self.city.id, save_text)
+            self.assertIn("Amenity." + self.amenity.id, save_text)
+            self.assertIn("Review." + self.review.id, save_text)
+
+    def test_reload(self):
+        """Test reload method."""
+        bm = BaseModel()
+        with open("file.json", "w", encoding="utf-8") as f:
+            key = "{}.{}".format(type(bm).__name__, bm.id)
+            json.dump({key: bm.to_dict()}, f)
+        self.storage.reload()
+        store = FileStorage._FileStorage__objects
+        self.assertIn("BaseModel." + bm.id, store)
+
+    def test_reload_no_file(self):
+        """Test reload method with no existing file.json."""
+        try:
+            self.storage.reload()
+        except Exception:
+            self.fail
+
+    def test_delete(self):
+        """Test delete method."""
+        bm = BaseModel()
+        key = "{}.{}".format(type(bm).__name__, bm.id)
+        FileStorage._FileStorage__objects[key] = bm
+        self.storage.delete(bm)
+        self.assertNotIn(bm, FileStorage._FileStorage__objects)
+
+    def test_delete_nonexistant(self):
+        """Test delete method with a nonexistent object."""
+        try:
+            self.storage.delete(BaseModel())
+        except Exception:
+            self.fail
+
+
+if __name__ == "__main__":
+    unittest.main()
