@@ -1,153 +1,202 @@
 #!/usr/bin/python3
-"""User test"""
-from datetime import datetime
-import inspect
+"""Defines unnittests for models/city.py."""
+import os
+import pep8
 import models
-import pep8 as pycodestyle
-from models.base_model import BaseModel
-from models.engine.db_storage import DBStorage
-import time
+import MySQLdb
 import unittest
-from unittest import mock
-Model = models.city.City
-City = models.city.City
-module_doc = models.city.__doc__
-path1 = "models/city.py"
-path2 = "tests/test_models/test_city.py"
+from datetime import datetime
+from models.base_model import Base
+from models.base_model import BaseModel
+from models.city import City
+from models.state import State
+from models.engine.db_storage import DBStorage
+from models.engine.file_storage import FileStorage
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import sessionmaker
 
 
-class DocsTest(unittest.TestCase):
-    """Test to check behaviors"""
+class TestCity(unittest.TestCase):
+    """Unittests for testing the City class."""
 
     @classmethod
-    def setUpClass(self):
-        """setting up tests"""
-        self.self_funcs = inspect.getmembers(Model, inspect.isfunction)
+    def setUpClass(cls):
+        """City testing setup.
+
+        Temporarily renames any existing file.json.
+        Resets FileStorage objects dictionary.
+        Creates FileStorage, DBStorage, City and State instances for testing.
+        """
+        try:
+            os.rename("file.json", "tmp")
+        except IOError:
+            pass
+        FileStorage._FileStorage__objects = {}
+        cls.filestorage = FileStorage()
+        cls.state = State(name="California")
+        cls.city = City(name="San Francisco", state_id=cls.state.id)
+
+        if type(models.storage) == DBStorage:
+            cls.dbstorage = DBStorage()
+            Base.metadata.create_all(cls.dbstorage._DBStorage__engine)
+            Session = sessionmaker(bind=cls.dbstorage._DBStorage__engine)
+            cls.dbstorage._DBStorage__session = Session()
+
+    @classmethod
+    def tearDownClass(cls):
+        """City testing teardown.
+
+        Restore original file.json.
+        Delete the FileStorage, DBStorage, City and State test instances.
+        """
+        try:
+            os.remove("file.json")
+        except IOError:
+            pass
+        try:
+            os.rename("tmp", "file.json")
+        except IOError:
+            pass
+        del cls.state
+        del cls.city
+        del cls.filestorage
+        if type(models.storage) == DBStorage:
+            cls.dbstorage._DBStorage__session.close()
+            del cls.dbstorage
 
     def test_pep8(self):
-        """Testing pep8"""
-        for path in [path1,
-                     path2]:
-            with self.subTest(path=path):
-                errors = pycodestyle.Checker(path).check_all()
-                self.assertEqual(errors, 0)
+        """Test pep8 styling."""
+        style = pep8.StyleGuide(quiet=True)
+        p = style.check_files(["models/city.py"])
+        self.assertEqual(p.total_errors, 0, "fix pep8")
 
-    def test_module_docstring(self):
-        """Test module docstring"""
-        self.assertIsNot(module_doc, None,
-                         "city.py needs a docstring")
-        self.assertTrue(len(module_doc) > 1,
-                        "test_city.py needs a docstring")
+    def test_docstrings(self):
+        """Check for docstrings."""
+        self.assertIsNotNone(City.__doc__)
 
-        """Test classes doctring"""
-        self.assertIsNot(BaseModel.__doc__, None,
-                         "City class needs a docstring")
-        self.assertTrue(len(BaseModel.__doc__) >= 1,
-                        "City class needs a docstring")
+    def test_attributes(self):
+        """Check for attributes."""
+        ct = City()
+        self.assertEqual(str, type(ct.id))
+        self.assertEqual(datetime, type(ct.created_at))
+        self.assertEqual(datetime, type(ct.updated_at))
+        self.assertTrue(hasattr(ct, "__tablename__"))
+        self.assertTrue(hasattr(ct, "name"))
+        self.assertTrue(hasattr(ct, "state_id"))
 
-    def test_func_docstrings(self):
-        """test func dostrings"""
-        for func in self.self_funcs:
-            with self.subTest(function=func):
-                self.assertIsNot(
-                    func[1].__doc__,
-                    None,
-                    "{:s} method needs a docstring".format(func[0])
-                )
-                self.assertTrue(
-                    len(func[1].__doc__) > 1,
-                    "{:s} method needs a docstring".format(func[0])
-                )
+    @unittest.skipIf(type(models.storage) == FileStorage,
+                     "Testing FileStorage")
+    def test_nullable_attributes(self):
+        """Check that relevant DBStorage attributes are non-nullable."""
+        with self.assertRaises(OperationalError):
+            self.dbstorage._DBStorage__session.add(City(
+                state_id=self.state.id))
+            self.dbstorage._DBStorage__session.commit()
+        self.dbstorage._DBStorage__session.rollback()
+        with self.assertRaises(OperationalError):
+            self.dbstorage._DBStorage__session.add(City(name="San Jose"))
+            self.dbstorage._DBStorage__session.commit()
+        self.dbstorage._DBStorage__session.rollback()
+
+    @unittest.skipIf(type(models.storage) == FileStorage,
+                     "Testing FileStorage")
+    def test_state_relationship_deletes(self):
+        """Test delete cascade in City-State relationship."""
+        st = State(name="Georgia")
+        self.dbstorage._DBStorage__session.add(st)
+        self.dbstorage._DBStorage__session.commit()
+        ct = City(name="Atlanta", state_id=st.id)
+        self.dbstorage._DBStorage__session.add(ct)
+        self.dbstorage._DBStorage__session.commit()
+        self.dbstorage._DBStorage__session.delete(st)
+        self.dbstorage._DBStorage__session.commit()
+        db = MySQLdb.connect(user="hbnb_test",
+                             passwd="hbnb_test_pwd",
+                             db="hbnb_test_db")
+        cursor = db.cursor()
+        cursor.execute("SELECT * FROM cities WHERE BINARY name = 'Atlanta'")
+        query = cursor.fetchall()
+        cursor.close()
+        self.assertEqual(0, len(query))
+
+    def test_is_subclass(self):
+        """Check that City is a subclass of BaseModel."""
+        self.assertTrue(issubclass(City, BaseModel))
+
+    def test_init(self):
+        """Test initialization."""
+        self.assertIsInstance(self.city, City)
+
+    def test_two_models_are_unique(self):
+        """Test that different City instances are unique."""
+        ct = City()
+        self.assertNotEqual(self.city.id, ct.id)
+        self.assertLess(self.city.created_at, ct.created_at)
+        self.assertLess(self.city.updated_at, ct.updated_at)
+
+    def test_init_args_kwargs(self):
+        """Test initialization with args and kwargs."""
+        dt = datetime.utcnow()
+        ct = City("1", id="5", created_at=dt.isoformat())
+        self.assertEqual(ct.id, "5")
+        self.assertEqual(ct.created_at, dt)
+
+    def test_str(self):
+        """Test __str__ representation."""
+        s = self.city.__str__()
+        self.assertIn("[City] ({})".format(self.city.id), s)
+        self.assertIn("'id': '{}'".format(self.city.id), s)
+        self.assertIn("'created_at': {}".format(
+            repr(self.city.created_at)), s)
+        self.assertIn("'updated_at': {}".format(
+            repr(self.city.updated_at)), s)
+        self.assertIn("'name': '{}'".format(self.city.name), s)
+        self.assertIn("'state_id': '{}'".format(self.city.state_id), s)
+
+    @unittest.skipIf(type(models.storage) == DBStorage,
+                     "Testing DBStorage")
+    def test_save_filestorage(self):
+        """Test save method with FileStorage."""
+        old = self.city.updated_at
+        self.city.save()
+        self.assertLess(old, self.city.updated_at)
+        with open("file.json", "r") as f:
+            self.assertIn("City." + self.city.id, f.read())
+
+    @unittest.skipIf(type(models.storage) == FileStorage,
+                     "Testing FileStorage")
+    def test_save_dbstorage(self):
+        """Test save method with DBStorage."""
+        old = self.city.updated_at
+        self.state.save()
+        self.city.save()
+        self.assertLess(old, self.city.updated_at)
+        db = MySQLdb.connect(user="hbnb_test",
+                             passwd="hbnb_test_pwd",
+                             db="hbnb_test_db")
+        cursor = db.cursor()
+        cursor.execute("SELECT * \
+                          FROM `cities` \
+                         WHERE BINARY name = '{}'".
+                       format(self.city.name))
+        query = cursor.fetchall()
+        self.assertEqual(1, len(query))
+        self.assertEqual(self.city.id, query[0][0])
+        cursor.close()
+
+    def test_to_dict(self):
+        """Test to_dict method."""
+        city_dict = self.city.to_dict()
+        self.assertEqual(dict, type(city_dict))
+        self.assertEqual(self.city.id, city_dict["id"])
+        self.assertEqual("City", city_dict["__class__"])
+        self.assertEqual(self.city.created_at.isoformat(),
+                         city_dict["created_at"])
+        self.assertEqual(self.city.updated_at.isoformat(),
+                         city_dict["updated_at"])
+        self.assertEqual(self.city.name, city_dict["name"])
+        self.assertEqual(self.city.state_id, city_dict["state_id"])
 
 
-@unittest.skipIf(type(models.storage) == DBStorage, "Testing DBStorage")
-class TestBaseModel(unittest.TestCase):
-    """testing BaseModel Class"""
-    @mock.patch('models.city')
-    def test_instances(self, mock_storage):
-        """Testing that object is correctly created"""
-        instance = City()
-        self.assertIs(type(instance), City)
-        instance.name = "Holbies foravaaaa"
-        instance.state_id = "111-222"
-
-        expectec_attrs_types = {
-            "id": str,
-            "created_at": datetime,
-            "updated_at": datetime,
-            "state_id": str,
-            "name": str
-        }
-        # testing types and attr names
-        for attr, types in expectec_attrs_types.items():
-            with self.subTest(attr=attr, typ=types):
-                self.assertIn(attr, instance.__dict__)
-                self.assertIs(type(instance.__dict__[attr]), types)
-        self.assertEqual(instance.name, "Holbies foravaaaa")
-        self.assertEqual(instance.state_id, "111-222")
-
-    def test_datetime(self):
-        """testing correct datetime assignation
-        correct assignation of created_at and updated_at"""
-        created_at = datetime.now()
-        instance1 = City()
-        updated_at = datetime.now()
-        self.assertEqual(created_at <= instance1.created_at <=
-                         updated_at, True)
-        time.sleep(0.1)
-        created_at = datetime.now()
-        instance2 = City()
-        updated_at = datetime.now()
-        self.assertTrue(created_at <= instance2.created_at <= updated_at, True)
-        self.assertEqual(instance1.created_at, instance1.created_at)
-        self.assertEqual(instance2.updated_at, instance2.updated_at)
-        self.assertNotEqual(instance1.created_at, instance2.created_at)
-        self.assertNotEqual(instance1.updated_at, instance2.updated_at)
-
-    def test_uuid(self):
-        """testing uuid"""
-        instance1 = City()
-        instance2 = City()
-        for instance in [instance1, instance2]:
-            tuuid = instance.id
-            with self.subTest(uuid=tuuid):
-                self.assertIs(type(tuuid), str)
-
-    def test_dictionary(self):
-        """testing to_dict correct funtionality"""
-        """Testing that object is correctly created"""
-        instance3 = City()
-        self.assertIs(type(instance3), City)
-        instance3.name = "Holbies foravaaaa"
-        instance3.state_id = "111-222"
-        new_inst = instance3.to_dict()
-        expectec_attrs = ["id",
-                          "created_at",
-                          "updated_at",
-                          "name",
-                          "state_id",
-                          "__class__"]
-        self.assertCountEqual(new_inst.keys(), expectec_attrs)
-        self.assertEqual(new_inst['__class__'], 'City')
-        self.assertEqual(new_inst['name'], 'Holbies foravaaaa')
-        self.assertEqual(new_inst['state_id'], '111-222')
-
-    def test_str_method(self):
-        """testing str method, checking output"""
-        instance4 = City()
-        strr = "[City] ({}) {}".format(instance4.id, instance4.__dict__)
-        self.assertEqual(strr, str(instance4))
-
-    @mock.patch('models.storage')
-    def test_save_method(self, mock_storage):
-        """test save method and if it updates
-        "updated_at" calling storage.save"""
-        instance4 = City()
-        created_at = instance4.created_at
-        updated_at = instance4.updated_at
-        instance4.save()
-        new_created_at = instance4.created_at
-        new_updated_at = instance4.updated_at
-        self.assertNotEqual(updated_at, new_updated_at)
-        self.assertEqual(created_at, new_created_at)
-        self.assertTrue(mock_storage.save.called)
+if __name__ == "__main__":
+    unittest.main()
